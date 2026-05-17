@@ -1,151 +1,151 @@
-import React, { useState } from 'react';
-import { useChat } from './hooks/useChat';
+import React, { useState, useEffect } from 'react';
+import Login from './components/Login';
+import Sidebar from './components/Sidebar';
+import Chat from './components/Chat';
+import LogPanel from './components/LogPanel';
+import MessageList from './components/MessageList';
+import type { Message, LogEntry } from './types';
+import { websocketService } from './services/WebSocketService';
 import './App.css';
 
 const App: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [inputMessage, setInputMessage] = useState('');
-  
-  const {
-    messages,
-    onlineUsers,
-    isConnected,
-    error,
-    currentUser,
-    connect,
-    sendMessage,
-    getUsers,
-    getHistory,
-    messagesEndRef
-  } = useChat();
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleConnect = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (username.trim()) {
-      connect(username.trim());
+  useEffect(() => {
+    // Настройка WebSocket хендлеров
+    websocketService.onMessage((text, sender) => {
+      if (sender === 'system') {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text,
+          sender: 'System',
+          recipient: '',
+          timestamp: new Date(),
+          isOwn: false,
+          isSystem: true
+        }]);
+      } else if (sender) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text,
+          sender: sender,
+          recipient: currentUser || '',
+          timestamp: new Date(),
+          isOwn: false,
+          isSystem: false
+        }]);
+      }
+    });
+
+    websocketService.onUserList((users) => {
+      setOnlineUsers(users);
+    });
+
+    websocketService.onLog((log) => {
+      setLogs(prev => [...prev, log]);
+    });
+
+    websocketService.onConnectionChange((connected) => {
+      setIsConnected(connected);
+      if (!connected && currentUser) {
+        setError('Connection lost. Attempting to reconnect...');
+      }
+    });
+
+  }, [currentUser]);
+
+  const handleConnect = (username: string) => {
+    setError(null);
+    setMessages([]);
+    setLogs([]);
+    
+    websocketService.connect(username)
+      .then(() => {
+        setCurrentUser(username);
+        setIsConnected(true);
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text: `Connected to server as ${username}`,
+          sender: 'System',
+          recipient: '',
+          timestamp: new Date(),
+          isOwn: false,
+          isSystem: true
+        }]);
+      })
+      .catch((err) => {
+        setError(`Failed to connect: ${err.message}`);
+      });
+  };
+
+  const handleSendMessage = (recipient: string, text: string) => {
+    if (websocketService.sendMessage(recipient, text)) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text,
+        sender: currentUser || 'me',
+        recipient,
+        timestamp: new Date(),
+        isOwn: true,
+        isSystem: false
+      }]);
     }
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedUser && inputMessage.trim()) {
-      sendMessage(selectedUser, inputMessage);
-      setInputMessage('');
-    }
+  const handleGetUsers = () => {
+    websocketService.getUsers();
   };
 
-  const handleLogout = () => {
-    window.location.reload();
+  const handleGetHistory = () => {
+    websocketService.getHistory();
   };
 
-  if (!isConnected) {
-    return (
-      <div className="login-container">
-        <div className="login-card">
-          <h1>📱 Messenger</h1>
-          <form onSubmit={handleConnect}>
-            <input
-              type="text"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoFocus
-            />
-            <button type="submit" disabled={!username.trim()}>
-              Connect
-            </button>
-          </form>
-          {error && <div className="error-message">{error}</div>}
-        </div>
-      </div>
-    );
+  const handleDisconnect = () => {
+    websocketService.disconnect();
+    setCurrentUser(null);
+    setIsConnected(false);
+    setSelectedUser(null);
+    setMessages([]);
+  };
+
+  const handleClearLogs = () => {
+    setLogs([]);
+  };
+
+  if (!currentUser) {
+    return <Login onConnect={handleConnect} error={error} />;
   }
 
   return (
-    <div className="app-container">
-      {/* Sidebar */}
-      <div className="sidebar">
-        <div className="user-info">
-          <h3>👤 {currentUser}</h3>
-          <button onClick={handleLogout} className="logout-btn">
-            Logout
-          </button>
-        </div>
+    <div className="app">
+      <div className="app-main">
+        <Sidebar
+          currentUser={currentUser}
+          onlineUsers={onlineUsers}
+          selectedUser={selectedUser}
+          onSelectUser={setSelectedUser}
+          onGetUsers={handleGetUsers}
+          onGetHistory={handleGetHistory}
+          onDisconnect={handleDisconnect}
+          isConnected={isConnected}
+        />
         
-        <div className="actions">
-          <button onClick={getUsers} className="action-btn">
-            📋 Refresh Users
-          </button>
-          <button onClick={getHistory} className="action-btn">
-            📜 Get History
-          </button>
-        </div>
-        
-        <div className="users-list">
-          <h4>Online Users ({onlineUsers.length})</h4>
-          <ul>
-            {onlineUsers.filter(u => u !== currentUser).map(user => (
-              <li
-                key={user}
-                className={`user-item ${selectedUser === user ? 'selected' : ''}`}
-                onClick={() => setSelectedUser(user)}
-              >
-                <span className="user-status online"></span>
-                {user}
-              </li>
-            ))}
-            {onlineUsers.filter(u => u === currentUser).map(user => (
-              <li key={user} className="user-item current">
-                <span className="user-status online"></span>
-                {user} (you)
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Chat
+          messages={messages}
+          selectedUser={selectedUser}
+          currentUser={currentUser}
+          onSendMessage={handleSendMessage}
+          isConnected={isConnected}
+        />
       </div>
       
-      {/* Chat Area */}
-      <div className="chat-area">
-        <div className="chat-header">
-          {selectedUser ? (
-            <>💬 Chat with <strong>{selectedUser}</strong></>
-          ) : (
-            <>Select a user to start chatting</>
-          )}
-        </div>
-        
-        <div className="messages-container">
-          {messages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`message ${msg.isOwn ? 'own' : ''} ${msg.isSystem ? 'system' : ''}`}
-            >
-              {!msg.isOwn && !msg.isSystem && msg.sender !== 'system' && (
-                <div className="message-sender">{msg.sender}</div>
-              )}
-              <div className="message-text">{msg.text}</div>
-              <div className="message-time">
-                {msg.timestamp.toLocaleTimeString()}
-              </div>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-        
-        {selectedUser && (
-          <form onSubmit={handleSendMessage} className="input-area">
-            <input
-              type="text"
-              placeholder={`Message to ${selectedUser}...`}
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              autoFocus
-            />
-            <button type="submit">Send</button>
-          </form>
-        )}
-      </div>
+      <LogPanel logs={logs} onClear={handleClearLogs} />
     </div>
   );
 };
