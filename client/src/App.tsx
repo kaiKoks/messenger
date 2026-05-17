@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Login from './components/Login';
 import Sidebar from './components/Sidebar';
 import Chat from './components/Chat';
 import LogPanel from './components/LogPanel';
-import MessageList from './components/MessageList';
 import type { Message, LogEntry } from './types';
 import { websocketService } from './services/WebSocketService';
 import './App.css';
@@ -16,13 +15,26 @@ const App: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  // Флаги для предотвращения дублирования
+  const isHandlerRegistered = useRef(false);
+  const messageHandlerRef = useRef<((text: string, sender?: string) => void) | null>(null);
+  const userListHandlerRef = useRef<((users: string[]) => void) | null>(null);
+  const logHandlerRef = useRef<((log: LogEntry) => void) | null>(null);
+  const connectionHandlerRef = useRef<((connected: boolean) => void) | null>(null);
 
+  // Регистрируем хендлеры только один раз
   useEffect(() => {
-    // Настройка WebSocket хендлеров
-    websocketService.onMessage((text, sender) => {
+    if (isHandlerRegistered.current) return;
+    isHandlerRegistered.current = true;
+
+    // Хендлер сообщений
+    const onMessage = (text: string, sender?: string) => {
+      console.log('onMessage called:', { text, sender });
+      
       if (sender === 'system') {
         setMessages(prev => [...prev, {
-          id: Date.now().toString(),
+          id: Date.now().toString() + Math.random(),
           text,
           sender: 'System',
           recipient: '',
@@ -32,7 +44,7 @@ const App: React.FC = () => {
         }]);
       } else if (sender) {
         setMessages(prev => [...prev, {
-          id: Date.now().toString(),
+          id: Date.now().toString() + Math.random(),
           text,
           sender: sender,
           recipient: currentUser || '',
@@ -41,43 +53,49 @@ const App: React.FC = () => {
           isSystem: false
         }]);
       }
-    });
+    };
+    messageHandlerRef.current = onMessage;
+    websocketService.onMessage(onMessage);
 
-    websocketService.onUserList((users) => {
+    // Хендлер списка пользователей
+    const onUserList = (users: string[]) => {
+      console.log('onUserList called:', users);
       setOnlineUsers(users);
-    });
+    };
+    userListHandlerRef.current = onUserList;
+    websocketService.onUserList(onUserList);
 
-    websocketService.onLog((log) => {
+    // Хендлер логов
+    const onLog = (log: LogEntry) => {
       setLogs(prev => [...prev, log]);
-    });
+    };
+    logHandlerRef.current = onLog;
+    websocketService.onLog(onLog);
 
-    websocketService.onConnectionChange((connected) => {
+    // Хендлер соединения
+    const onConnectionChange = (connected: boolean) => {
       setIsConnected(connected);
       if (!connected && currentUser) {
         setError('Connection lost. Attempting to reconnect...');
       }
-    });
+    };
+    connectionHandlerRef.current = onConnectionChange;
+    websocketService.onConnectionChange(onConnectionChange);
 
-  }, [currentUser]);
+    // Cleanup при размонтировании
+    return () => {
+      // Не отписываемся, чтобы сохранить хендлеры
+    };
+  }, []); // Пустой массив зависимостей - регистрируем один раз
 
   const handleConnect = (username: string) => {
     setError(null);
     setMessages([]);
-    setLogs([]);
     
     websocketService.connect(username)
       .then(() => {
         setCurrentUser(username);
         setIsConnected(true);
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          text: `Connected to server as ${username}`,
-          sender: 'System',
-          recipient: '',
-          timestamp: new Date(),
-          isOwn: false,
-          isSystem: true
-        }]);
       })
       .catch((err) => {
         setError(`Failed to connect: ${err.message}`);
@@ -87,7 +105,7 @@ const App: React.FC = () => {
   const handleSendMessage = (recipient: string, text: string) => {
     if (websocketService.sendMessage(recipient, text)) {
       setMessages(prev => [...prev, {
-        id: Date.now().toString(),
+        id: Date.now().toString() + Math.random(),
         text,
         sender: currentUser || 'me',
         recipient,
