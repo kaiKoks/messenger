@@ -5,3 +5,4 @@ server/server
 .vscode/launch.json
 .vscode/settings.json
 .gitignore
+server/build
