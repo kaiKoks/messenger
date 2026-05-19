@@ -21,7 +21,7 @@ int main() {
     signal(SIGPIPE, SIG_IGN);
     
     logger.log("SERVER", "========================================");
-    logger.log("SERVER", "Messenger Server v5.1");
+    logger.log("SERVER", "Messenger Server");
     logger.log("SERVER", "========================================");
     logger.log("SERVER", "Starting on port 8080");
     logger.log("SERVER", "PID: " + std::to_string(getpid()));

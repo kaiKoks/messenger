@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -Wall -std=c++11 -pthread
+CXXFLAGS = -Wall -std=c++17 -pthread
 LIBS = -lwebsockets -lsqlite3 -lssl -lcrypto
 
 SRC_DIR = src

@@ -2,7 +2,7 @@
 #include <sys/stat.h>
 
 Logger::Logger() {
-    mkdir("../logs");
+    mkdir("../logs", 0777);
     logFile.open("../logs/server.log", std::ios::app);
 }
 
