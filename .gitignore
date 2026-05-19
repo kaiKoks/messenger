@@ -6,3 +6,4 @@ server/server
 .vscode/settings.json
 .gitignore
 server/build
+.gitignore
