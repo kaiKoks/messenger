@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from "react"
-import type { LogEntry, DialogInfo, ServerMessage } from "./services/WebSocketService"
+import type {
+  LogEntry,
+  DialogInfo,
+  ServerMessage,
+} from "./services/WebSocketService"
 import { websocketService } from "./services/WebSocketService"
 import Login from "./components/Login"
 import MessageList from "./components/MessageList"
@@ -35,8 +39,12 @@ const App: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
 
-  const [activeTab, setActiveTab] = useState<'recent' | 'online' | 'all'>('recent')
+  const [activeTab, setActiveTab] = useState<"recent" | "online" | "all">(
+    "recent",
+  )
   const [searchUsername, setSearchUsername] = useState("")
+
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const chatInputRef = useRef<HTMLInputElement>(null)
 
@@ -60,8 +68,10 @@ const App: React.FC = () => {
       }
 
       if (
-        (serverMsg.sender === selectedUser && serverMsg.recipient === currentUser) ||
-        (serverMsg.sender === currentUser && serverMsg.recipient === selectedUser)
+        (serverMsg.sender === selectedUser &&
+          serverMsg.recipient === currentUser) ||
+        (serverMsg.sender === currentUser &&
+          serverMsg.recipient === selectedUser)
       ) {
         setMessages((prev) => [...prev, newMsg])
       }
@@ -214,10 +224,19 @@ const App: React.FC = () => {
   return (
     <div className="app-container">
       <div className="main-layout">
-        
+        <button
+          className="menu-toggle"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          style={{ display: window.innerWidth <= 480 ? "flex" : "none" }}
+        >
+          ☰
+        </button>
+        <div
+          className={`menu-overlay ${sidebarOpen ? "open" : ""}`}
+          onClick={() => setSidebarOpen(false)}
+        />
         {/* Боковая панель */}
-        <div className="sidebar">
-          
+        <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
           {/* Текущий пользователь */}
           <div className="user-profile">
             <div className="avatar-circle">
@@ -227,7 +246,11 @@ const App: React.FC = () => {
               <div className="profile-name">{currentUser}</div>
               <div className="profile-status">В сети</div>
             </div>
-            <button onClick={handleDisconnect} className="icon-exit-btn" title="Выйти">
+            <button
+              onClick={handleDisconnect}
+              className="icon-exit-btn"
+              title="Выйти"
+            >
               ✕
             </button>
           </div>
@@ -241,26 +264,28 @@ const App: React.FC = () => {
               onChange={(e) => setSearchUsername(e.target.value)}
               className="search-field"
             />
-            <button type="submit" className="search-add-btn">+</button>
+            <button type="submit" className="search-add-btn">
+              +
+            </button>
           </form>
 
           {/* Табы навигации */}
           <div className="tabs-navigation">
-            <button 
-              className={`tab-item ${activeTab === 'recent' ? 'active' : ''}`}
-              onClick={() => setActiveTab('recent')}
+            <button
+              className={`tab-item ${activeTab === "recent" ? "active" : ""}`}
+              onClick={() => setActiveTab("recent")}
             >
               Чаты
             </button>
-            <button 
-              className={`tab-item ${activeTab === 'online' ? 'active' : ''}`}
-              onClick={() => setActiveTab('online')}
+            <button
+              className={`tab-item ${activeTab === "online" ? "active" : ""}`}
+              onClick={() => setActiveTab("online")}
             >
-              Онлайн ({onlineUsers.filter(u => u !== currentUser).length})
+              Онлайн ({onlineUsers.filter((u) => u !== currentUser).length})
             </button>
-            <button 
-              className={`tab-item ${activeTab === 'all' ? 'active' : ''}`}
-              onClick={() => setActiveTab('all')}
+            <button
+              className={`tab-item ${activeTab === "all" ? "active" : ""}`}
+              onClick={() => setActiveTab("all")}
             >
               Все
             </button>
@@ -268,77 +293,76 @@ const App: React.FC = () => {
 
           {/* Списки пользователей */}
           <div className="list-scroller">
-            
-            {activeTab === 'recent' && (
+            {activeTab === "recent" && (
               <div className="items-stack">
-                {dialogs.length === 0 ? (
+                {dialogs.length === 0 ?
                   <div className="empty-notice">Нет активных диалогов</div>
-                ) : (
-                  dialogs.map((dialog) => (
+                : dialogs.map((dialog) => (
                     <div
                       key={dialog.username}
-                      className={`contact-card ${selectedUser === dialog.username ? 'active' : ''}`}
+                      className={`contact-card ${selectedUser === dialog.username ? "active" : ""}`}
                       onClick={() => setSelectedUser(dialog.username)}
                     >
                       <div className="avatar-circle-small">💬</div>
                       <div className="contact-details">
                         <div className="contact-title">{dialog.username}</div>
-                        <div className="contact-preview">{dialog.lastMessage || "Сообщений нет"}</div>
+                        <div className="contact-preview">
+                          {dialog.lastMessage || "Сообщений нет"}
+                        </div>
                       </div>
                     </div>
                   ))
-                )}
+                }
               </div>
             )}
 
-            {activeTab === 'online' && (
+            {activeTab === "online" && (
               <div className="items-stack">
-                {onlineUsers.filter(u => u !== currentUser).length === 0 ? (
+                {onlineUsers.filter((u) => u !== currentUser).length === 0 ?
                   <div className="empty-notice">Никого нет в сети</div>
-                ) : (
-                  onlineUsers
+                : onlineUsers
                     .filter((u) => u !== currentUser)
                     .map((user) => (
                       <div
                         key={user}
-                        className={`contact-card ${selectedUser === user ? 'active' : ''}`}
+                        className={`contact-card ${selectedUser === user ? "active" : ""}`}
                         onClick={() => setSelectedUser(user)}
                       >
                         <span className="indicator-dot online"></span>
                         <span className="contact-title">{user}</span>
                       </div>
                     ))
-                )}
+                }
               </div>
             )}
 
-            {activeTab === 'all' && (
+            {activeTab === "all" && (
               <div className="items-stack">
-                {allUsers.filter(u => u !== currentUser).length === 0 ? (
+                {allUsers.filter((u) => u !== currentUser).length === 0 ?
                   <div className="empty-notice">База пользователей пуста</div>
-                ) : (
-                  allUsers
+                : allUsers
                     .filter((u) => u !== currentUser)
                     .map((user) => (
                       <div
                         key={user}
-                        className={`contact-card ${selectedUser === user ? 'active' : ''}`}
+                        className={`contact-card ${selectedUser === user ? "active" : ""}`}
                         onClick={() => setSelectedUser(user)}
                       >
-                        <span className={`indicator-dot ${onlineUsers.includes(user) ? 'online' : 'offline'}`}></span>
+                        <span
+                          className={`indicator-dot ${onlineUsers.includes(user) ? "online" : "offline"}`}
+                        ></span>
                         <span className="contact-title">{user}</span>
                       </div>
                     ))
-                )}
+                }
               </div>
             )}
-
           </div>
         </div>
 
         {/* Окно чата */}
         <div className="chat-area">
-          {selectedUser ? (
+          {selectedUser ?
             <>
               <div className="chat-top-bar">
                 <div className="active-interlocutor">
@@ -346,7 +370,9 @@ const App: React.FC = () => {
                   <div>
                     <div className="interlocutor-name">{selectedUser}</div>
                     <div className="interlocutor-status">
-                      {onlineUsers.includes(selectedUser) ? "В сети" : "Не в сети (офлайн)"}
+                      {onlineUsers.includes(selectedUser) ?
+                        "В сети"
+                      : "Не в сети (офлайн)"}
                     </div>
                   </div>
                 </div>
@@ -367,13 +393,12 @@ const App: React.FC = () => {
                 </button>
               </form>
             </>
-          ) : (
-            <div className="welcome-placeholder">
+          : <div className="welcome-placeholder">
               <div className="placeholder-brand">✉️</div>
               <h2>Выберите, кому хотите написать</h2>
               <p>Используйте вкладки или поиск сверху, чтобы открыть диалог</p>
             </div>
-          )}
+          }
         </div>
       </div>
     </div>
