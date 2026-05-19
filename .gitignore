@@ -1,9 +1,0 @@
-messages.db
-logs/server.log
-server/server
-.vscode/c_cpp_properties.json
-.vscode/launch.json
-.vscode/settings.json
-.gitignore
-server/build
-.gitignore
