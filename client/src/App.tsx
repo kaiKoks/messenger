@@ -1,285 +1,383 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Login from './components/Login';
-import Sidebar from './components/Sidebar';
-import Chat from './components/Chat';
-import LogPanel from './components/LogPanel';
-import type { Message, LogEntry } from './types';
-import { websocketService } from './services/WebSocketService';
-import './App.css';
+import React, { useState, useEffect, useRef } from "react"
+import type { LogEntry, DialogInfo, ServerMessage } from "./services/WebSocketService"
+import { websocketService } from "./services/WebSocketService"
+import Login from "./components/Login"
+import MessageList from "./components/MessageList"
+import "./App.css"
+
+interface Message {
+  id: string
+  text: string
+  sender: string
+  recipient: string
+  timestamp: Date
+  isOwn: boolean
+  isSystem?: boolean
+}
+
+interface Dialog {
+  username: string
+  lastMessage: string
+  timestamp: Date
+  unread: number
+}
 
 const App: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  
-  const isHandlerRegistered = useRef(false);
-  const autoRefreshInterval = useRef<NodeJS.Timeout | null>(null);
-  
-  // Хранилище сообщений по пользователям
-  const [userMessages, setUserMessages] = useState<Map<string, Message[]>>(new Map());
-  
-  // Автоматическое обновление списка пользователей
-  const startAutoRefresh = useCallback(() => {
-    if (autoRefreshInterval.current) {
-      clearInterval(autoRefreshInterval.current);
-    }
-    autoRefreshInterval.current = setInterval(() => {
-      if (isConnected && currentUser) {
-        websocketService.getUsers();
-      }
-    }, 10000);
-  }, [isConnected, currentUser]);
-  
-  const stopAutoRefresh = useCallback(() => {
-    if (autoRefreshInterval.current) {
-      clearInterval(autoRefreshInterval.current);
-      autoRefreshInterval.current = null;
-    }
-  }, []);
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
 
-  // Добавление сообщения в хранилище для конкретного пользователя
-  const addMessageToUser = useCallback((username: string, message: Message) => {
-    setUserMessages(prev => {
-      const newMap = new Map(prev);
-      const userMsgList = newMap.get(username) || [];
-      newMap.set(username, [...userMsgList, message]);
-      return newMap;
-    });
-  }, []);
+  const [allUsers, setAllUsers] = useState<string[]>([])
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([])
+  const [dialogs, setDialogs] = useState<Dialog[]>([])
+  const [selectedUser, setSelectedUser] = useState<string | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
 
-  // Получение сообщений для выбранного пользователя
-  const getMessagesForUser = useCallback((username: string | null): Message[] => {
-    if (!username) return [];
-    return userMessages.get(username) || [];
-  }, [userMessages]);
+  const [activeTab, setActiveTab] = useState<'recent' | 'online' | 'all'>('recent')
+  const [searchUsername, setSearchUsername] = useState("")
 
-  // Регистрируем хендлеры только один раз
+  const chatInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
-    if (isHandlerRegistered.current) return;
-    isHandlerRegistered.current = true;
-
-    // Хендлер входящих сообщений
-    const onMessage = (text: string, sender?: string) => {
-      if (sender === 'system') {
-        // Системные сообщения показываем в текущем чате
-        const systemMsg: Message = {
-          id: Date.now().toString() + Math.random(),
-          text,
-          sender: 'System',
-          recipient: '',
-          timestamp: new Date(),
-          isOwn: false,
-          isSystem: true
-        };
-        
-        // Если есть выбранный пользователь, добавляем в его чат
-        if (selectedUser) {
-          addMessageToUser(selectedUser, systemMsg);
-        } else {
-          // Иначе добавляем в общие сообщения (показываем только если нет выбранного чата)
-          setMessages(prev => [...prev, systemMsg]);
-        }
-      } else if (sender && sender !== currentUser) {
-        // Сообщение от другого пользователя
-        const newMsg: Message = {
-          id: Date.now().toString() + Math.random(),
-          text,
-          sender: sender,
-          recipient: currentUser || '',
-          timestamp: new Date(),
-          isOwn: false,
-          isSystem: false
-        };
-        
-        // Сохраняем в хранилище для этого отправителя
-        addMessageToUser(sender, newMsg);
-        
-        // Если этот отправитель выбран в данный момент, показываем сразу
-        if (selectedUser === sender) {
-          setMessages(prev => [...prev, newMsg]);
-        }
+    websocketService.onConnectionChange((connected) => {
+      setIsConnected(connected)
+      if (!connected) {
+        setIsAuthenticated(false)
+        setCurrentUser(null)
       }
-    };
-    websocketService.onMessage(onMessage);
+    })
 
-    // Хендлер списка пользователей
-    const onUserList = (users: string[]) => {
-      setOnlineUsers(users);
-    };
-    websocketService.onUserList(onUserList);
-
-    // Хендлер истории
-    const onHistory = (historyLines: string[]) => {
-      const historyMessages: Message[] = historyLines.map((line, idx) => {
-        const colonIndex = line.indexOf(':');
-        const sender = colonIndex > 0 ? line.substring(0, colonIndex) : 'Unknown';
-        const text = colonIndex > 0 ? line.substring(colonIndex + 2) : line;
-        return {
-          id: `history-${Date.now()}-${idx}`,
-          text: text,
-          sender: sender,
-          recipient: currentUser || '',
-          timestamp: new Date(),
-          isOwn: sender === currentUser,
-          isSystem: false
-        };
-      });
-      
-      // Сохраняем историю в хранилище
-      historyMessages.forEach(msg => {
-        const otherUser = msg.isOwn ? msg.recipient : msg.sender;
-        if (otherUser && otherUser !== currentUser) {
-          addMessageToUser(otherUser, msg);
-        }
-      });
-      
-      // Если есть выбранный пользователь, показываем его историю
-      if (selectedUser) {
-        const userHistory = historyMessages.filter(
-          msg => msg.sender === selectedUser || msg.recipient === selectedUser
-        );
-        setMessages(userHistory);
-      }
-    };
-    websocketService.onHistory(onHistory);
-
-    // Хендлер логов
-    const onLog = (log: LogEntry) => {
-      setLogs(prev => [...prev, log]);
-    };
-    websocketService.onLog(onLog);
-
-    // Хендлер соединения
-    const onConnectionChange = (connected: boolean) => {
-      setIsConnected(connected);
-      if (connected) {
-        startAutoRefresh();
-      } else {
-        stopAutoRefresh();
-      }
-    };
-    websocketService.onConnectionChange(onConnectionChange);
-
-    return () => {
-      stopAutoRefresh();
-    };
-  }, [currentUser, selectedUser, startAutoRefresh, stopAutoRefresh, addMessageToUser]);
-
-  // При смене выбранного пользователя загружаем его сообщения
-  useEffect(() => {
-    if (selectedUser) {
-      const userMsgList = getMessagesForUser(selectedUser);
-      setMessages(userMsgList);
-    } else {
-      setMessages([]);
-    }
-  }, [selectedUser, getMessagesForUser]);
-
-  const handleConnect = async (username: string) => {
-    setError(null);
-    setMessages([]);
-    setOnlineUsers([]);
-    setUserMessages(new Map());
-    
-    try {
-      await websocketService.connect(username);
-      setCurrentUser(username);
-      setIsConnected(true);
-      startAutoRefresh();
-      
-      setTimeout(() => {
-        websocketService.getUsers();
-        websocketService.getHistory();
-      }, 500);
-    } catch (err) {
-      setError(`Failed to connect: ${err}`);
-    }
-  };
-
-  const handleSendMessage = (recipient: string, text: string) => {
-    if (websocketService.sendMessage(recipient, text)) {
+    websocketService.onMessage((serverMsg: ServerMessage) => {
       const newMsg: Message = {
-        id: Date.now().toString() + Math.random(),
-        text,
-        sender: currentUser || 'me',
-        recipient,
-        timestamp: new Date(),
-        isOwn: true,
-        isSystem: false
-      };
-      
-      // Сохраняем в хранилище
-      addMessageToUser(recipient, newMsg);
-      
-      // Если это текущий выбранный пользователь, показываем
-      if (selectedUser === recipient) {
-        setMessages(prev => [...prev, newMsg]);
+        id: serverMsg.id,
+        text: serverMsg.text,
+        sender: serverMsg.sender,
+        recipient: serverMsg.recipient,
+        timestamp: new Date(serverMsg.timestamp),
+        isOwn: serverMsg.sender === currentUser,
       }
+
+      if (
+        (serverMsg.sender === selectedUser && serverMsg.recipient === currentUser) ||
+        (serverMsg.sender === currentUser && serverMsg.recipient === selectedUser)
+      ) {
+        setMessages((prev) => [...prev, newMsg])
+      }
+
+      if (currentUser) {
+        websocketService.getRecentDialogs()
+      }
+    })
+
+    websocketService.onAllUsers((users) => {
+      setAllUsers(users)
+    })
+
+    websocketService.onOnlineUsers((users) => {
+      setOnlineUsers(users)
+    })
+
+    websocketService.onDialogHistory((chatWithUser, historyMsgs) => {
+      if (chatWithUser === selectedUser) {
+        const parsedMessages: Message[] = historyMsgs.map((m) => ({
+          id: m.id,
+          text: m.text,
+          sender: m.sender,
+          recipient: m.recipient,
+          timestamp: new Date(m.timestamp),
+          isOwn: m.sender === currentUser,
+        }))
+        setMessages(parsedMessages)
+      }
+    })
+
+    websocketService.onDialogs((recentDialogs) => {
+      const activeDialogs: Dialog[] = recentDialogs.map((d) => ({
+        username: d.username,
+        lastMessage: d.lastMessage,
+        timestamp: new Date(),
+        unread: 0,
+      }))
+      setDialogs(activeDialogs)
+    })
+
+    websocketService.connect().catch((err) => {
+      console.error("WebSocket error:", err)
+    })
+  }, [currentUser, selectedUser])
+
+  useEffect(() => {
+    if (selectedUser && isAuthenticated) {
+      setMessages([])
+      websocketService.getDialog(selectedUser)
+      setTimeout(() => chatInputRef.current?.focus(), 50)
     }
-  };
+  }, [selectedUser, isAuthenticated])
 
-  const handleGetUsers = () => {
-    websocketService.getUsers();
-  };
+  useEffect(() => {
+    if (isAuthenticated && isConnected) {
+      websocketService.getRecentDialogs()
+      websocketService.getOnlineUsers()
+      websocketService.getAllUsers()
 
-  const handleGetHistory = () => {
-    websocketService.getHistory();
-  };
+      const interval = setInterval(() => {
+        websocketService.getOnlineUsers()
+        websocketService.getRecentDialogs()
+      }, 4000)
+
+      return () => clearInterval(interval)
+    }
+  }, [isAuthenticated, isConnected])
+
+  const handleLogin = async (user: string, pass: string) => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const loggedInUser = await websocketService.login(user, pass)
+      setCurrentUser(loggedInUser)
+      setIsAuthenticated(true)
+    } catch (err: any) {
+      setError(err.message || "Неверное имя пользователя или пароль")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleRegister = async (user: string, pass: string) => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      await websocketService.register(user, pass)
+      const loggedInUser = await websocketService.login(user, pass)
+      setCurrentUser(loggedInUser)
+      setIsAuthenticated(true)
+    } catch (err: any) {
+      setError(err.message || "Ошибка регистрации. Имя может быть занято.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!chatInputRef.current || !selectedUser) return
+    const text = chatInputRef.current.value.trim()
+    if (!text) return
+
+    const localMsg: Message = {
+      id: "local-" + Date.now(),
+      text: text,
+      sender: currentUser || "me",
+      recipient: selectedUser,
+      timestamp: new Date(),
+      isOwn: true,
+    }
+    setMessages((prev) => [...prev, localMsg])
+
+    websocketService.sendMessage(selectedUser, text)
+    chatInputRef.current.value = ""
+    chatInputRef.current.focus()
+  }
+
+  const handleStartChatByName = (e: React.FormEvent) => {
+    e.preventDefault()
+    const targetName = searchUsername.trim()
+    if (!targetName || targetName === currentUser) return
+
+    setSelectedUser(targetName)
+    setSearchUsername("")
+  }
 
   const handleDisconnect = () => {
-    stopAutoRefresh();
-    websocketService.disconnect();
-    setCurrentUser(null);
-    setIsConnected(false);
-    setSelectedUser(null);
-    setMessages([]);
-    setOnlineUsers([]);
-    setUserMessages(new Map());
-  };
+    websocketService.disconnect()
+    setIsAuthenticated(false)
+    setCurrentUser(null)
+    setSelectedUser(null)
+    setMessages([])
+  }
 
-  const handleClearLogs = () => {
-    setLogs([]);
-  };
-
-  // При выборе пользователя
-  const handleSelectUser = (user: string) => {
-    setSelectedUser(user);
-  };
-
-  if (!currentUser) {
-    return <Login onConnect={handleConnect} error={error} />;
+  if (!isAuthenticated) {
+    return (
+      <div className="app-wrapper unauthenticated">
+        <Login
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          error={error}
+          isLoading={isLoading}
+        />
+      </div>
+    )
   }
 
   return (
-    <div className="app">
-      <div className="app-main">
-        <Sidebar
-          currentUser={currentUser}
-          onlineUsers={onlineUsers}
-          selectedUser={selectedUser}
-          onSelectUser={handleSelectUser}
-          onGetUsers={handleGetUsers}
-          onGetHistory={handleGetHistory}
-          onDisconnect={handleDisconnect}
-          isConnected={isConnected}
-        />
+    <div className="app-container">
+      <div className="main-layout">
         
-        <Chat
-          messages={messages}
-          selectedUser={selectedUser}
-          currentUser={currentUser}
-          onSendMessage={handleSendMessage}
-          isConnected={isConnected}
-        />
-      </div>
-      
-      <LogPanel logs={logs} onClear={handleClearLogs} />
-    </div>
-  );
-};
+        {/* Боковая панель */}
+        <div className="sidebar">
+          
+          {/* Текущий пользователь */}
+          <div className="user-profile">
+            <div className="avatar-circle">
+              {currentUser?.substring(0, 2).toUpperCase()}
+            </div>
+            <div className="user-meta">
+              <div className="profile-name">{currentUser}</div>
+              <div className="profile-status">В сети</div>
+            </div>
+            <button onClick={handleDisconnect} className="icon-exit-btn" title="Выйти">
+              ✕
+            </button>
+          </div>
 
-export default App;
+          {/* Быстрый поиск по имени */}
+          <form onSubmit={handleStartChatByName} className="search-box">
+            <input
+              type="text"
+              placeholder="Найти или создать чат по имени..."
+              value={searchUsername}
+              onChange={(e) => setSearchUsername(e.target.value)}
+              className="search-field"
+            />
+            <button type="submit" className="search-add-btn">+</button>
+          </form>
+
+          {/* Табы навигации */}
+          <div className="tabs-navigation">
+            <button 
+              className={`tab-item ${activeTab === 'recent' ? 'active' : ''}`}
+              onClick={() => setActiveTab('recent')}
+            >
+              Чаты
+            </button>
+            <button 
+              className={`tab-item ${activeTab === 'online' ? 'active' : ''}`}
+              onClick={() => setActiveTab('online')}
+            >
+              Онлайн ({onlineUsers.filter(u => u !== currentUser).length})
+            </button>
+            <button 
+              className={`tab-item ${activeTab === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveTab('all')}
+            >
+              Все
+            </button>
+          </div>
+
+          {/* Списки пользователей */}
+          <div className="list-scroller">
+            
+            {activeTab === 'recent' && (
+              <div className="items-stack">
+                {dialogs.length === 0 ? (
+                  <div className="empty-notice">Нет активных диалогов</div>
+                ) : (
+                  dialogs.map((dialog) => (
+                    <div
+                      key={dialog.username}
+                      className={`contact-card ${selectedUser === dialog.username ? 'active' : ''}`}
+                      onClick={() => setSelectedUser(dialog.username)}
+                    >
+                      <div className="avatar-circle-small">💬</div>
+                      <div className="contact-details">
+                        <div className="contact-title">{dialog.username}</div>
+                        <div className="contact-preview">{dialog.lastMessage || "Сообщений нет"}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {activeTab === 'online' && (
+              <div className="items-stack">
+                {onlineUsers.filter(u => u !== currentUser).length === 0 ? (
+                  <div className="empty-notice">Никого нет в сети</div>
+                ) : (
+                  onlineUsers
+                    .filter((u) => u !== currentUser)
+                    .map((user) => (
+                      <div
+                        key={user}
+                        className={`contact-card ${selectedUser === user ? 'active' : ''}`}
+                        onClick={() => setSelectedUser(user)}
+                      >
+                        <span className="indicator-dot online"></span>
+                        <span className="contact-title">{user}</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+
+            {activeTab === 'all' && (
+              <div className="items-stack">
+                {allUsers.filter(u => u !== currentUser).length === 0 ? (
+                  <div className="empty-notice">База пользователей пуста</div>
+                ) : (
+                  allUsers
+                    .filter((u) => u !== currentUser)
+                    .map((user) => (
+                      <div
+                        key={user}
+                        className={`contact-card ${selectedUser === user ? 'active' : ''}`}
+                        onClick={() => setSelectedUser(user)}
+                      >
+                        <span className={`indicator-dot ${onlineUsers.includes(user) ? 'online' : 'offline'}`}></span>
+                        <span className="contact-title">{user}</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* Окно чата */}
+        <div className="chat-area">
+          {selectedUser ? (
+            <>
+              <div className="chat-top-bar">
+                <div className="active-interlocutor">
+                  <div className="avatar-circle-small">👤</div>
+                  <div>
+                    <div className="interlocutor-name">{selectedUser}</div>
+                    <div className="interlocutor-status">
+                      {onlineUsers.includes(selectedUser) ? "В сети" : "Не в сети (офлайн)"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <MessageList messages={messages} />
+
+              <form onSubmit={handleSendMessage} className="chat-bottom-input">
+                <input
+                  ref={chatInputRef}
+                  type="text"
+                  placeholder="Напишите сообщение..."
+                  className="message-field"
+                  autoFocus
+                />
+                <button type="submit" className="message-send-btn">
+                  Отправить
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="welcome-placeholder">
+              <div className="placeholder-brand">✉️</div>
+              <h2>Выберите, кому хотите написать</h2>
+              <p>Используйте вкладки или поиск сверху, чтобы открыть диалог</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default App

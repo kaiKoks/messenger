@@ -6,27 +6,20 @@ export interface Message {
   timestamp: Date;
   isOwn: boolean;
   isSystem?: boolean;
-  type?: 'normal' | 'system' | 'error';
 }
 
-export interface User {
+export interface Dialog {
   username: string;
-  isOnline: boolean;
-}
-
-export interface ChatState {
+  lastMessage: string;
+  timestamp: Date;
   messages: Message[];
-  onlineUsers: string[];
-  currentUser: string | null;
-  isConnected: boolean;
-  error: string | null;
-  selectedUser: string | null;
+  unread: number;
 }
 
 export interface LogEntry {
   id: string;
   timestamp: Date;
-  level: 'info' | 'error' | 'warning' | 'success';
+  level: 'info' | 'error' | 'warning' | 'success' | 'debug';
   message: string;
   source?: 'server' | 'client';
 }

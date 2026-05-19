@@ -1,47 +1,76 @@
 import React, { useState } from 'react';
 
 interface LoginProps {
-  onConnect: (username: string) => void;
+  onLogin: (username: string, password: string) => void;
+  onRegister: (username: string, password: string) => void;
   error: string | null;
+  isLoading: boolean;
 }
 
-const Login: React.FC<LoginProps> = ({ onConnect, error }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onRegister, error, isLoading }) => {
+  const [isLoginMode, setIsLoginMode] = useState(true);
   const [username, setUsername] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [password, setPassword] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim() && !isConnecting) {
-      setIsConnecting(true);
-      onConnect(username.trim());
+    if (!username || !password) return;
+    
+    if (isLoginMode) {
+      onLogin(username, password);
+    } else {
+      onRegister(username, password);
     }
   };
 
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>📱 Messenger</h1>
-        <p className="login-subtitle">Connect to the server and start chatting</p>
+        <h1>📱 Мессенджер</h1>
+        <p className="login-subtitle">
+          {isLoginMode ? 'Войдите в свой аккаунт' : 'Создайте новый аккаунт'}
+        </p>
+        
+        <div className="login-tabs">
+          <button 
+            type="button"
+            className={isLoginMode ? 'active' : ''} 
+            onClick={() => setIsLoginMode(true)}
+          >
+            Войти
+          </button>
+          <button 
+            type="button"
+            className={!isLoginMode ? 'active' : ''} 
+            onClick={() => setIsLoginMode(false)}
+          >
+            Регистрация
+          </button>
+        </div>
         
         <form onSubmit={handleSubmit}>
           <input
             type="text"
-            placeholder="Enter your username"
+            placeholder="Имя пользователя"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            disabled={isConnecting}
+            disabled={isLoading}
             autoFocus
           />
-          <button type="submit" disabled={!username.trim() || isConnecting}>
-            {isConnecting ? 'Connecting...' : 'Connect →'}
+          <input
+            type="password"
+            placeholder="Пароль"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isLoading}
+          />
+          
+          <button type="submit" disabled={!username || !password || isLoading}>
+            {isLoading ? 'Загрузка...' : (isLoginMode ? 'Войти →' : 'Зарегистрироваться →')}
           </button>
         </form>
         
         {error && <div className="error-message">{error}</div>}
-        
-        <div className="login-info">
-          <small>Server: ws://localhost:8080</small>
-        </div>
       </div>
     </div>
   );

@@ -1,12 +1,20 @@
 import React, { useRef, useEffect } from 'react';
-import type { Message } from '../types';
+
+interface Message {
+  id: string;
+  text: string;
+  sender: string;
+  recipient: string;
+  timestamp: Date;
+  isOwn: boolean;
+  isSystem?: boolean;
+}
 
 interface MessageListProps {
   messages: Message[];
-  currentUser: string;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages, currentUser }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -20,31 +28,34 @@ const MessageList: React.FC<MessageListProps> = ({ messages, currentUser }) => {
   };
   
   const getAvatar = (msg: Message) => {
-    if (msg.isSystem) return '🖥️';
+    if (msg.isSystem) return '⚙️';
     if (msg.isOwn) return '👤';
-    return '👥';
+    return '💬';
   };
   
   return (
     <div className="messages-area">
       {messages.length === 0 && (
-        <div className="messages-empty">
-          <div className="empty-icon">💭</div>
-          <p>No messages yet</p>
-          <small>Send a message to start the conversation</small>
+        <div className="welcome-placeholder" style={{ padding: 0 }}>
+          <div className="placeholder-brand" style={{ fontSize: '40px' }}>✉️</div>
+          <h2>Сообщений нет</h2>
+          <p>Отправьте первое сообщение, чтобы начать диалог.</p>
         </div>
       )}
+      
       {messages.map((msg, idx) => (
         <div key={msg.id || idx} className={`message ${getMessageClass(msg)}`}>
-          <div className="message-avatar">{getAvatar(msg)}</div>
+          {!msg.isSystem && <div className="message-avatar">{getAvatar(msg)}</div>}
           <div className="message-bubble">
             {!msg.isOwn && !msg.isSystem && (
               <div className="message-sender">{msg.sender}</div>
             )}
             <div className="message-text">{msg.text}</div>
-            <div className="message-time">
-              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </div>
+            {!msg.isSystem && (
+              <span className="message-time">
+                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
           </div>
         </div>
       ))}
