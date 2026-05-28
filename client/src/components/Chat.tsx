@@ -1,15 +1,7 @@
 import React, { useRef, useEffect } from "react"
 import MessageList from "./MessageList"
+import type { Message } from '../types/index';
 
-interface Message {
-  id: string
-  text: string
-  sender: string
-  recipient: string
-  timestamp: Date
-  isOwn: boolean
-  isSystem?: boolean
-}
 
 interface ChatProps {
   selectedUser: string | null

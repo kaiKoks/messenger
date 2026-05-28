@@ -1,14 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 
-interface Message {
-  id: string;
-  text: string;
-  sender: string;
-  recipient: string;
-  timestamp: Date;
-  isOwn: boolean;
-  isSystem?: boolean;
-}
+import type { Message } from '../types/index';
 
 interface MessageListProps {
   messages: Message[];

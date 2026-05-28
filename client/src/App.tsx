@@ -1,26 +1,11 @@
 import React, { useState, useEffect } from "react"
 import type { LogEntry, DialogInfo, ServerMessage } from "./services/WebSocketService"
+import type { Message, Dialog } from "./types/index"
 import { websocketService } from "./services/WebSocketService"
 import Login from "./components/Login"
 import Chat from "./components/Chat"
 import "./App.css"
 
-interface Message {
-  id: string
-  text: string
-  sender: string
-  recipient: string
-  timestamp: Date
-  isOwn: boolean
-  isSystem?: boolean
-}
-
-interface Dialog {
-  username: string
-  lastMessage: string
-  timestamp: Date
-  unread: number
-}
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
